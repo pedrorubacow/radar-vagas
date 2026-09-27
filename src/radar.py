@@ -1,7 +1,7 @@
 """Radar de vagas.
 
-Le feeds RSS de vagas, filtra pelos termos configurados em config.yml
-e envia no Telegram apenas o que ainda nao foi enviado.
+Le feeds RSS e alertas de vaga no Gmail, filtra pelos termos configurados
+em config.yml e envia no Telegram apenas o que ainda nao foi enviado.
 """
 
 import hashlib
@@ -16,6 +16,8 @@ from pathlib import Path
 import feedparser
 import requests
 import yaml
+
+import fonte_gmail
 
 RAIZ = Path(__file__).resolve().parent.parent
 CONFIG = RAIZ / "config.yml"
@@ -50,8 +52,8 @@ def salvar_vistos(vistos):
     )
 
 
-def identificador(entrada):
-    base = (entrada.get("link") or "") + (entrada.get("title") or "")
+def identificador(titulo, link):
+    base = (link or "") + (titulo or "")
     return hashlib.sha1(base.encode("utf-8")).hexdigest()[:16]
 
 
@@ -63,11 +65,23 @@ def limpar_link(link):
     return link or ""
 
 
-def passa_no_filtro(texto, incluir, excluir):
+def avaliar(texto, incluir, excluir):
+    """Devolve (passou, motivo). O motivo diz qual termo decidiu."""
     texto = normalizar(texto)
-    if any(normalizar(termo) in texto for termo in excluir):
-        return False
-    return any(normalizar(termo) in texto for termo in incluir)
+
+    bloqueios = [t for t in excluir if normalizar(t) in texto]
+    if bloqueios:
+        return False, "excluido por: " + ", ".join(bloqueios)
+
+    encontrados = [t for t in incluir if normalizar(t) in texto]
+    if encontrados:
+        return True, "casou com: " + ", ".join(encontrados)
+
+    return False, "nenhum termo de inclusao encontrado"
+
+
+def passa_no_filtro(texto, incluir, excluir):
+    return avaliar(texto, incluir, excluir)[0]
 
 
 def enviar(mensagem, token, chat_id):
@@ -94,9 +108,12 @@ def main():
     excluir = config["excluir"]
     limite = config.get("limite_por_mensagem", 15)
 
+    diagnostico = os.environ.get("MODO_DIAGNOSTICO", "").lower() in ("1", "true", "sim")
     novos = []
+    relatorio = []
     lidas = 0
 
+    # --- fonte 1: feeds RSS ---
     for url in config["feeds"]:
         feed = feedparser.parse(url)
         if feed.bozo and not feed.entries:
@@ -105,16 +122,65 @@ def main():
 
         for entrada in feed.entries:
             lidas += 1
-            chave = identificador(entrada)
+            titulo = html.unescape(re.sub(r"<[^>]+>", "", entrada.get("title", ""))).strip()
+            link = limpar_link(entrada.get("link", ""))
+            chave = identificador(titulo, link)
+
             if chave in vistos:
                 continue
-
             vistos.add(chave)
-            titulo = html.unescape(re.sub(r"<[^>]+>", "", entrada.get("title", "")))
-            conteudo = f"{entrada.get('title', '')} {entrada.get('summary', '')}"
 
-            if passa_no_filtro(conteudo, incluir, excluir):
-                novos.append((titulo.strip(), limpar_link(entrada.get("link", ""))))
+            conteudo = f"{entrada.get('title', '')} {entrada.get('summary', '')}"
+            passou, motivo = avaliar(conteudo, incluir, excluir)
+            relatorio.append((passou, motivo, titulo, link, "rss"))
+            if passou:
+                novos.append((titulo, link))
+
+    # --- fonte 2: alertas no Gmail ---
+    gmail = config.get("gmail", {})
+    usuario = os.environ.get("GMAIL_USER")
+    senha = os.environ.get("GMAIL_APP_PASSWORD")
+
+    if gmail.get("ativo") and usuario and senha:
+        try:
+            achados = fonte_gmail.coletar(
+                usuario, senha, etiqueta=gmail.get("etiqueta", "Vagas")
+            )
+        except Exception as erro:
+            print(f"aviso: falha ao ler o Gmail: {erro}", file=sys.stderr)
+            achados = []
+
+        for titulo, link, _remetente in achados:
+            lidas += 1
+            chave = identificador(titulo, link)
+
+            if chave in vistos:
+                continue
+            vistos.add(chave)
+
+            passou, motivo = avaliar(titulo, incluir, excluir)
+            relatorio.append((passou, motivo, titulo, link, "gmail"))
+            if passou:
+                novos.append((titulo, link))
+
+    if diagnostico:
+        aprovadas = [r for r in relatorio if r[0]]
+        reprovadas = [r for r in relatorio if not r[0]]
+
+        print("\n=== MODO DIAGNOSTICO: nada foi enviado nem gravado ===\n")
+        print(f"APROVADAS ({len(aprovadas)})")
+        for _, motivo, titulo, link, fonte in aprovadas:
+            print(f"  [{fonte}] {titulo}")
+            print(f"     {motivo}")
+            print(f"     {link}\n")
+
+        print(f"DESCARTADAS ({len(reprovadas)})")
+        for _, motivo, titulo, link, fonte in reprovadas:
+            print(f"  [{fonte}] {titulo}")
+            print(f"     {motivo}\n")
+
+        print(f"total lido: {lidas}")
+        return
 
     if novos:
         linhas = ["<b>Vagas novas no radar</b>", ""]
