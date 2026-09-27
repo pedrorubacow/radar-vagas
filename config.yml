@@ -61,3 +61,8 @@ excluir:
 
 # Quantas vagas no maximo por mensagem
 limite_por_mensagem: 15
+
+# Alertas de vaga recebidos por e-mail (LinkedIn, Indeed, Glassdoor, Gupy...)
+gmail:
+  ativo: true
+  etiqueta: Vagas
