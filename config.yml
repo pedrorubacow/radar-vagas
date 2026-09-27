@@ -1,0 +1,63 @@
+# Fontes de vaga (Google Alerts em formato RSS)
+feeds:
+  # "analista de implantação" ("linux" OR "docker" OR "cloud") "São Paulo"
+  - https://www.google.com/alerts/feeds/15566347975770211837/4498600155870439815
+  # ("devops júnior" OR "analista de cloud júnior") "São Paulo"
+  - https://www.google.com/alerts/feeds/15566347975770211837/11725279282630664072
+  # "vaga" ("terraform" OR "kubernetes" OR "artifactory") "São Paulo"
+  - https://www.google.com/alerts/feeds/15566347975770211837/2047608842721527525
+
+# Precisa conter pelo menos um destes termos para passar
+incluir:
+  - linux
+  - docker
+  - container
+  - kubernetes
+  - terraform
+  - ansible
+  - aws
+  - azure
+  - gcp
+  - cloud
+  - nuvem
+  - pipeline
+  - ci/cd
+  - devops
+  - sre
+  - infraestrutura
+  - implantacao
+  - implantação
+  - implementacao
+  - implementação
+  - observabilidade
+  - artifactory
+  - sonarqube
+  - jenkins
+  - gitlab
+
+# Se contiver qualquer um destes, descarta na hora
+excluir:
+  - senior
+  - sênior
+  - especialista
+  - coordenador
+  - gerente
+  - tech lead
+  - arquiteto
+  - protheus
+  - totvs
+  - erp
+  - folha de pagamento
+  - departamento pessoal
+  - fiscal
+  - prontuario
+  - prontuário
+  - vendas
+  - comercial
+  - pre-vendas
+  - pré-vendas
+  - executivo de contas
+  - estagio obrigatorio
+
+# Quantas vagas no maximo por mensagem
+limite_por_mensagem: 15
