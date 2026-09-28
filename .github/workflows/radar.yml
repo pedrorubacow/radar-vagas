@@ -2,14 +2,23 @@ name: radar de vagas
 
 on:
   schedule:
-    # 09:00 em Sao Paulo (UTC-3) = 12:00 UTC, de segunda a sexta
-    - cron: "0 12 * * 1-5"
+    # 08:43 e 09:10 em Sao Paulo (UTC-3), de segunda a sexta.
+    # Horario quebrado evita a fila de pico do GitHub; o segundo cobre
+    # o caso de o primeiro atrasar demais. Nao duplica mensagem porque
+    # o vistos.json impede o reenvio.
+    - cron: "43 11 * * 1-5"
+    - cron: "10 12 * * 1-5"
   workflow_dispatch:
     inputs:
       diagnostico:
         description: "Modo diagnostico: lista tudo e nao envia nada"
         type: boolean
         default: false
+
+# uma execucao por vez, para duas rodadas nao disputarem o mesmo push
+concurrency:
+  group: radar
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -19,6 +28,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
 
       - uses: actions/setup-python@v5
         with:
@@ -42,5 +53,24 @@ jobs:
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add vistos.json
-          git diff --staged --quiet || git commit -m "chore: atualiza vistos"
-          git push
+
+          if git diff --staged --quiet; then
+            echo "nada mudou no historico"
+            exit 0
+          fi
+
+          git commit -m "chore: atualiza vistos"
+
+          # o remoto pode ter avancado desde o checkout (re-run ou execucao
+          # concorrente): rebase antes de empurrar, com ate 3 tentativas
+          for tentativa in 1 2 3; do
+            if git pull --rebase --autostash origin main && git push origin HEAD:main; then
+              echo "historico atualizado na tentativa $tentativa"
+              exit 0
+            fi
+            echo "tentativa $tentativa falhou, repetindo em 5s..."
+            sleep 5
+          done
+
+          echo "nao foi possivel atualizar o historico"
+          exit 1
