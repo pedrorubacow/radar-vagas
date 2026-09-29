@@ -2,12 +2,12 @@ name: radar de vagas
 
 on:
   schedule:
-    # 08:43 e 09:10 em Sao Paulo (UTC-3), de segunda a sexta.
-    # Horario quebrado evita a fila de pico do GitHub; o segundo cobre
-    # o caso de o primeiro atrasar demais. Nao duplica mensagem porque
-    # o vistos.json impede o reenvio.
-    - cron: "43 11 * * 1-5"
-    - cron: "10 12 * * 1-5"
+    # 06:33 e 06:57 em Sao Paulo (UTC-3), de segunda a sexta.
+    # Cedo o bastante para a fila do GitHub atrasar e ainda chegar
+    # antes de acordar. O segundo cobre o caso de o primeiro falhar.
+    # Nao duplica mensagem porque o vistos.json impede o reenvio.
+    - cron: "33 9 * * 1-5"
+    - cron: "57 9 * * 1-5"
   workflow_dispatch:
     inputs:
       diagnostico:
@@ -53,14 +53,11 @@ jobs:
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add vistos.json
-
           if git diff --staged --quiet; then
             echo "nada mudou no historico"
             exit 0
           fi
-
           git commit -m "chore: atualiza vistos"
-
           # o remoto pode ter avancado desde o checkout (re-run ou execucao
           # concorrente): rebase antes de empurrar, com ate 3 tentativas
           for tentativa in 1 2 3; do
@@ -71,6 +68,5 @@ jobs:
             echo "tentativa $tentativa falhou, repetindo em 5s..."
             sleep 5
           done
-
           echo "nao foi possivel atualizar o historico"
           exit 1
